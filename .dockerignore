@@ -1,0 +1,10 @@
+.git
+.gitignore
+.vs
+bin
+obj
+artifacts
+appsettings.Development.json
+*.user
+*.suo
+*.md
