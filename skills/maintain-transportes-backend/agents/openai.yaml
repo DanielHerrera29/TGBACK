@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Transportes Backend"
+  short_description: "Maintain and harden the RNDC ASP.NET API"
+  default_prompt: "Use $maintain-transportes-backend to improve and verify the Transportes Gutierrez backend."

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transportes Gutierrez - Progreso del Proyecto</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #e0e0e0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 25px;
+            font-size: 0.85rem;
+        }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 15px;
+            backdrop-filter: blur(10px);
+        }
+        .card h2 {
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: #3a7bd5;
+        }
+        .progress-bar-container {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 22px;
+            margin-bottom: 8px;
+            position: relative;
+        }
+        .progress-bar {
+            height: 100%;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #fff;
+            transition: width 1.5s ease;
+        }
+        .progress-bar.green { background: linear-gradient(90deg, #00b09b, #96c93d); }
+        .progress-bar.blue { background: linear-gradient(90deg, #00d2ff, #3a7bd5); }
+        .progress-bar.orange { background: linear-gradient(90deg, #f7971e, #ffd200); }
+        .progress-bar.red { background: linear-gradient(90deg, #e44d26, #f16529); }
+        .progress-label {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        .features { list-style: none; }
+        .features li {
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .features li:last-child { border-bottom: none; }
+        .badge {
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        .badge.done { background: rgba(0,176,155,0.2); color: #96c93d; }
+        .badge.progress { background: rgba(58,123,213,0.2); color: #3a7bd5; }
+        .badge.pending { background: rgba(255,255,255,0.1); color: #888; }
+        .badge.partial { background: rgba(247,151,30,0.2); color: #ffd200; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .stat-box {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+        }
+        .stat-box .num {
+            font-size: 2rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-box .label { font-size: 0.75rem; color: #888; margin-top: 4px; }
+        .tech-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .tech-tag {
+            background: rgba(58,123,213,0.15);
+            border: 1px solid rgba(58,123,213,0.3);
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            color: #7bb3f0;
+        }
+        .overall-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .overall-label span { font-weight: bold; color: #96c93d; font-size: 1.1rem; }
+        .timestamp {
+            text-align: center;
+            color: #555;
+            font-size: 0.7rem;
+            margin-top: 15px;
+        }
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Transportes Gutierrez - Backend API</h1>
+        <p class="subtitle">Sistema de Despacho de Cargas RNDC &middot; .NET 8.0 Web API</p>
+
+        <!-- Overall Progress -->
+        <div class="card">
+            <div class="overall-label">
+                <h2>Progreso General del Proyecto</h2>
+                <span>72%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar green" style="width: 72%;">72%</div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid" style="margin-bottom: 15px;">
+            <div class="stat-box">
+                <div class="num">6</div>
+                <div class="label">Endpoints API</div>
+            </div>
+            <div class="stat-box">
+                <div class="num">3</div>
+                <div class="label">Servicios Core</div>
+            </div>
+            <div class="stat-box">
+                <div class="num">4</div>
+                <div class="label">Modelos de Dominio</div>
+            </div>
+            <div class="stat-box">
+                <div class="num">4</div>
+                <div class="label">DTOs</div>
+            </div>
+        </div>
+
+        <!-- Backend Core -->
+        <div class="card">
+            <h2>Backend Core - Estado</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar green" style="width: 90%;">90%</div>
+            </div>
+            <p class="progress-label">Infraestructura base completa</p>
+            <ul class="features">
+                <li>Configuracion y Dependencias <span class="badge done">COMPLETADO</span></li>
+                <li>Modelos de Dominio (Manifiesto, Remesa, RndcResponse) <span class="badge done">COMPLETADO</span></li>
+                <li>DTOs (Generar, Cumplir) <span class="badge done">COMPLETADO</span></li>
+                <li>Inyeccion de Dependencias (DI) <span class="badge done">COMPLETADO</span></li>
+                <li>Supabase Service (CRUD REST) <span class="badge done">COMPLETADO</span></li>
+            </ul>
+        </div>
+
+        <!-- API Endpoints -->
+        <div class="card">
+            <h2>Endpoints API - Estado</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar blue" style="width: 80%;">80%</div>
+            </div>
+            <p class="progress-label">4/6 endpoints funcionales</p>
+            <ul class="features">
+                <li>GET /api/rndc/ping <span class="badge done">COMPLETADO</span></li>
+                <li>POST /api/remesa/generar <span class="badge done">COMPLETADO</span></li>
+                <li>POST /api/remesa/cumplir <span class="badge done">COMPLETADO</span></li>
+                <li>GET /api/remesa/pendientes <span class="badge done">COMPLETADO</span></li>
+                <li>POST /api/manifiesto/generar <span class="badge done">COMPLETADO</span></li>
+                <li>POST /api/manifiesto/cumplir <span class="badge partial">EN PRUEBAS</span></li>
+            </ul>
+        </div>
+
+        <!-- RNDC Integration -->
+        <div class="card">
+            <h2>Integracion RNDC (SOAP) - Estado</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar blue" style="width: 75%;">75%</div>
+            </div>
+            <p class="progress-label">Comunicacion con Web Services del Ministerio de Transporte</p>
+            <ul class="features">
+                <li>Generacion de XML (ISO-8859-1) <span class="badge done">COMPLETADO</span></li>
+                <li>Cliente SOAP (RndcClient) <span class="badge done">COMPLETADO</span></li>
+                <li>Modo Simulacion / Produccion <span class="badge done">COMPLETADO</span></li>
+                <li>Expedicion (Crear Remesa/Manifiesto) <span class="badge done">COMPLETADO</span></li>
+                <li>Cumplimiento (Completar Remesa/Manifiesto) <span class="badge partial">EN PRUEBAS</span></li>
+                <li>Consulta de Estados <span class="badge pending">PENDIENTE</span></li>
+            </ul>
+        </div>
+
+        <!-- Pending Work -->
+        <div class="card">
+            <h2>Trabajo Pendiente</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar orange" style="width: 25%;">25%</div>
+            </div>
+            <ul class="features">
+                <li>Autenticacion / Autorizacion (JWT) <span class="badge pending">PENDIENTE</span></li>
+                <li>Validacion de DTOs (FluentValidation) <span class="badge pending">PENDIENTE</span></li>
+                <li>Manejo de Errores global (Middleware) <span class="badge pending">PENDIENTE</span></li>
+                <li>Logging estructurado <span class="badge pending">PENDIENTE</span></li>
+                <li>Tests unitarios e integracion <span class="badge pending">PENDIENTE</span></li>
+                <li>Consulta RNDC (estados, radicados) <span class="badge pending">PENDIENTE</span></li>
+                <li>Documentacion Swagger completa <span class="badge pending">PENDIENTE</span></li>
+                <li>Configuracion CORS productiva <span class="badge pending">PENDIENTE</span></li>
+            </ul>
+        </div>
+
+        <!-- Tech Stack -->
+        <div class="card">
+            <h2>Tecnologias</h2>
+            <div class="tech-tags">
+                <span class="tech-tag">C# .NET 8.0</span>
+                <span class="tech-tag">ASP.NET Core Web API</span>
+                <span class="tech-tag">Supabase (PostgreSQL)</span>
+                <span class="tech-tag">SOAP / XML</span>
+                <span class="tech-tag">Newtonsoft.Json</span>
+                <span class="tech-tag">Swagger / OpenAPI</span>
+                <span class="tech-tag">RNDC Integration</span>
+                <span class="tech-tag">ISO-8859-1</span>
+            </div>
+        </div>
+
+        <p class="timestamp">Actualizado: <span id="date"></span></p>
+    </div>
+
+    <script>
+        document.getElementById('date').textContent = new Date().toLocaleString('es-CO', {
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    </script>
+</body>
+</html>

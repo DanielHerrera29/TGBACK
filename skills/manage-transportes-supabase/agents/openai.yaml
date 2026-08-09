@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Transportes Supabase"
+  short_description: "Manage the backend Supabase schema safely"
+  default_prompt: "Use $manage-transportes-supabase to evolve and verify the Transportes Gutierrez Supabase integration."

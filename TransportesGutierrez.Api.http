@@ -1,0 +1,6 @@
+@TransportesGutierrez.Api_HostAddress = http://localhost:5116
+
+GET {{TransportesGutierrez.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
