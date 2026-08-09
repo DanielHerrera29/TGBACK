@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Net.Mail;
 using TransportesGutierrez.Api.Dtos;
 using TransportesGutierrez.Api.Services;
 
@@ -67,8 +68,9 @@ public sealed class OrdenesEscoltaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "No se pudo enviar la orden de escolta {OrdenId}", id);
-            await _db.RegistrarErrorEmailOrdenEscoltaAsync(id, "No fue posible enviar el correo.");
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "La orden fue guardada, pero no fue posible enviarla por correo." });
+            var mensaje = MensajeErrorCorreo(ex);
+            await _db.RegistrarErrorEmailOrdenEscoltaAsync(id, mensaje);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = mensaje });
         }
     }
 
@@ -103,4 +105,22 @@ public sealed class OrdenesEscoltaController : ControllerBase
         dto.Viajes.All(v => !string.IsNullOrWhiteSpace(v.Maquina)
             && !string.IsNullOrWhiteSpace(v.Origen)
             && !string.IsNullOrWhiteSpace(v.Destino));
+
+    private static string MensajeErrorCorreo(Exception exception)
+    {
+        if (exception is TimeoutException || exception.InnerException is TimeoutException)
+            return "La orden fue guardada, pero Gmail no respondio a tiempo. Intente reenviarla en unos minutos.";
+
+        if (exception is SmtpException smtp)
+        {
+            var detalle = smtp.Message.ToLowerInvariant();
+            if (detalle.Contains("authentic") || detalle.Contains("credential") || detalle.Contains("5.7"))
+                return "La orden fue guardada, pero Gmail rechazo el acceso. Revise el correo remitente y su contrasena de aplicacion.";
+
+            if (detalle.Contains("secure connection") || detalle.Contains("tls") || detalle.Contains("ssl"))
+                return "La orden fue guardada, pero no fue posible establecer una conexion segura con Gmail. Intente reenviarla.";
+        }
+
+        return "La orden fue guardada, pero no fue posible enviarla por correo. Intente reenviarla.";
+    }
 }
