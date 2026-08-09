@@ -37,10 +37,12 @@ public sealed class EmailSender
         {
             EnableSsl = true,
             UseDefaultCredentials = false,
+            Timeout = 40_000,
             Credentials = new NetworkCredential(credencial.CorreoEmail, credencial.ContrasenaApp)
         };
 
         cancellationToken.ThrowIfCancellationRequested();
-        await smtp.SendMailAsync(mensaje);
+        await smtp.SendMailAsync(mensaje)
+            .WaitAsync(TimeSpan.FromSeconds(40), cancellationToken);
     }
 }
