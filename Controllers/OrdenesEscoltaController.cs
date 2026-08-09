@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Net.Mail;
 using TransportesGutierrez.Api.Dtos;
 using TransportesGutierrez.Api.Services;
 
@@ -54,14 +53,10 @@ public sealed class OrdenesEscoltaController : ControllerBase
         if (pdf.Length == 0 || pdf.Length > 12 * 1024 * 1024)
             return BadRequest(new { error = "El PDF es invalido o excede el limite permitido." });
 
-        var credencial = await _db.ObtenerCredencialEmailUsuarioAsync(session.UserId);
-        if (credencial is null)
-            return Conflict(new { error = "Configure el correo remitente y la contrasena de aplicacion antes de generar ordenes." });
-
         try
         {
             await _db.SubirPdfOrdenEscoltaAsync(orden, pdf);
-            await _email.EnviarOrdenEscoltaAsync(credencial, orden.Consecutivo, pdf, cancellationToken);
+            await _email.EnviarOrdenEscoltaAsync(orden.Consecutivo, pdf, cancellationToken);
             await _db.MarcarOrdenEscoltaEnviadaAsync(id);
             return Ok(new { consecutivo = orden.Consecutivo, destinatario = "transportegutierrezremesas@gmail.com" });
         }
@@ -111,14 +106,19 @@ public sealed class OrdenesEscoltaController : ControllerBase
         if (exception is TimeoutException || exception.InnerException is TimeoutException)
             return "La orden fue guardada, pero Gmail no respondio a tiempo. Intente reenviarla en unos minutos.";
 
-        if (exception is SmtpException smtp)
+        if (exception is EmailDeliveryException delivery)
         {
-            var detalle = smtp.Message.ToLowerInvariant();
-            if (detalle.Contains("authentic") || detalle.Contains("credential") || detalle.Contains("5.7"))
-                return "La orden fue guardada, pero Gmail rechazo el acceso. Revise el correo remitente y su contrasena de aplicacion.";
+            if (delivery.StatusCode is null)
+                return "La orden fue guardada, pero falta configurar Brevo en el servidor.";
 
-            if (detalle.Contains("secure connection") || detalle.Contains("tls") || detalle.Contains("ssl"))
-                return "La orden fue guardada, pero no fue posible establecer una conexion segura con Gmail. Intente reenviarla.";
+            return delivery.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden =>
+                    "La orden fue guardada, pero Brevo rechazo la configuracion del remitente. Revise la clave API y verifique el correo remitente en Brevo.",
+                System.Net.HttpStatusCode.TooManyRequests =>
+                    "La orden fue guardada, pero se alcanzo el limite diario de correos de Brevo. Intente reenviarla manana.",
+                _ => "La orden fue guardada, pero Brevo no pudo entregar el correo. Intente reenviarla."
+            };
         }
 
         return "La orden fue guardada, pero no fue posible enviarla por correo. Intente reenviarla.";

@@ -23,7 +23,11 @@ builder.Services.AddOptions<SupabaseOptions>()
 builder.Services.AddScoped<XmlGeneratorService>();
 builder.Services.AddScoped<SupabaseService>();
 builder.Services.AddSingleton<AppSessionService>();
-builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddHttpClient<EmailSender>(client =>
+{
+    client.BaseAddress = new Uri("https://api.brevo.com/");
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 builder.Services.AddHostedService<PdfRetentionService>();
 
 builder.Services.AddHttpClient<RndcClient>(client =>
