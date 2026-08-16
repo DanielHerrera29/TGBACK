@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+*.user
+*.suo
+.vs/
