@@ -35,9 +35,14 @@ public class UsuariosController : ControllerBase
             return BadRequest(new { error = "Nombre y usuario RNDC son obligatorios" });
         if (dto.Role is not ("admin" or "operator" or "auditor"))
             return BadRequest(new { error = "Rol inválido" });
+        var cambiarCorreo = !string.IsNullOrWhiteSpace(dto.CorreoEmail) || !string.IsNullOrWhiteSpace(dto.ContrasenaApp);
+        if (cambiarCorreo && (string.IsNullOrWhiteSpace(dto.CorreoEmail) || string.IsNullOrWhiteSpace(dto.ContrasenaApp)))
+            return BadRequest(new {error="Para cambiar correo debe ingresar correo y contraseña de aplicación"});
 
-        await _db.ActualizarUsuarioAsync(id, dto.Name.Trim(), dto.Email.Trim(), dto.Password, dto.Role, dto.Active);
-        if (!string.IsNullOrWhiteSpace(dto.CorreoEmail) || !string.IsNullOrWhiteSpace(dto.ContrasenaApp))
+        if (dto.Whatsapp is not null && dto.Whatsapp.Length>0 && !System.Text.RegularExpressions.Regex.IsMatch(dto.Whatsapp,@"^\+[1-9][0-9]{7,14}$"))
+            return BadRequest(new {error="Celular inválido. Incluya código de país."});
+        await _db.ActualizarUsuarioAsync(id, dto.Name.Trim(), dto.Email.Trim(), dto.Password, dto.Role, dto.Active, dto.Whatsapp);
+        if (cambiarCorreo)
         {
             if (string.IsNullOrWhiteSpace(dto.CorreoEmail) || string.IsNullOrWhiteSpace(dto.ContrasenaApp))
                 return BadRequest(new { error = "Para cambiar correo debe ingresar correo y contraseña de aplicación" });
@@ -50,6 +55,7 @@ public class UsuariosController : ControllerBase
 public sealed class CredencialCorreoDto { public string CorreoEmail { get; set; } = ""; public string ContrasenaApp { get; set; } = ""; }
 public sealed class ActualizarUsuarioDto
 {
+    public string? Whatsapp { get; set; }
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
     public string? Password { get; set; }

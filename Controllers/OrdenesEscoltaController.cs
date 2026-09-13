@@ -108,6 +108,16 @@ public sealed class OrdenesEscoltaController : ControllerBase
         return url is null ? StatusCode(StatusCodes.Status502BadGateway) : Ok(new { url });
     }
 
+    [HttpGet("{id:guid}/detalle-compartir")]
+    public async Task<IActionResult> DetalleCompartir(string id)
+    {
+        var session = _sessions.Read(Request.Headers.Authorization);
+        if (session is null) return Unauthorized();
+        var orden = await _db.ObtenerOrdenEscoltaAsync(id);
+        if (orden is null || (session.Role != "admin" && orden.CreatedBy != session.UserId)) return NotFound();
+        return Content(await _db.DetalleCompartirOrdenAsync(id),"application/json");
+    }
+
     private static bool EsValida(CrearOrdenEscoltaDto dto) =>
         dto.Fecha != default &&
         !string.IsNullOrWhiteSpace(dto.Empresa) &&

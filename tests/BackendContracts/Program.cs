@@ -102,7 +102,24 @@ foreach (var status in new[]{HttpStatusCode.BadRequest,HttpStatusCode.Unauthoriz
     using var finalJson=JsonDocument.Parse(finalCall.Body!);
     Check(finalJson.RootElement.GetProperty("p_estado").GetString()==(status==HttpStatusCode.InternalServerError ? "POR_VERIFICAR" : "ERROR_PREVIO"),"rechazo explícito versus resultado incierto "+status);
 }
-Console.WriteLine("35 comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
+var contacts = new ContactoEscoltaController(sessions,fake,Options.Create(new SupabaseOptions{Url="https://example.invalid",Key="fixture"}));
+contacts.ControllerContext=controller.ControllerContext;
+controller.Request.Headers.Authorization="";
+Check(await contacts.Obtener(null,default) is UnauthorizedResult,"contactos requieren sesión");
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"operator");
+Check((await contacts.Obtener(Guid.NewGuid(),default) as StatusCodeResult)?.StatusCode==403,"operador no lee contactos ajenos");
+Check((await contacts.Vehiculos(Guid.Parse(user),new VehiculosEscoltaDto{Placas=["ABC123"]},default) as StatusCodeResult)?.StatusCode==403,"operador no se asigna vehículos");
+Check((await contacts.Destino(new DestinoWhatsappDto{Destino="+573223509469"},default) as StatusCodeResult)?.StatusCode==403,"operador no cambia destinatario global");
+fake.Replies.Enqueue((HttpStatusCode.OK,"{\"destino\":\"+573223509469\",\"whatsapp\":\"+573144672648\",\"placas\":[\"ABC123\",\"MNB124\",\"LLO001\"]}"));
+Check(await contacts.Obtener(null,default) is ContentResult,"contacto y destino independientes");
+using(var actor=JsonDocument.Parse(fake.Sent!)) Check(actor.RootElement.GetProperty("p_usuario").GetString()==user,"contacto usa actor del token");
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"admin");
+Check(await contacts.Destino(new DestinoWhatsappDto{Destino="abc"},default) is BadRequestObjectResult,"destino inválido rechazado");
+Check(await contacts.Vehiculos(Guid.Parse(user),new VehiculosEscoltaDto{Placas=["?bad"]},default) is BadRequestObjectResult,"placa inválida rechazada");
+fake.Replies.Enqueue((HttpStatusCode.OK,"null"));
+Check(await contacts.Vehiculos(Guid.Parse(user),new VehiculosEscoltaDto{Placas=["ABC123","MNB124","LLO001"]},default) is ContentResult,"admin asigna tres placas");
+using(var actor=JsonDocument.Parse(fake.Sent!)) Check(actor.RootElement.GetProperty("p_admin").GetString()==user,"asignación usa administrador autenticado");
+Console.WriteLine("45 comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
 static void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name);}
 
 sealed class FakeHttp : HttpMessageHandler,IHttpClientFactory {

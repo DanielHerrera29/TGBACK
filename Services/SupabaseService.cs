@@ -341,7 +341,7 @@ public class SupabaseService
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task ActualizarUsuarioAsync(string userId, string name, string email, string? password, string role, bool active)
+    public async Task ActualizarUsuarioAsync(string userId, string name, string email, string? password, string role, bool active, string? whatsapp = null)
     {
         var url = $"{SupabaseUrl}/rest/v1/users?id=eq.{Uri.EscapeDataString(userId)}";
         var body = new Dictionary<string, object?>
@@ -352,6 +352,7 @@ public class SupabaseService
             ["active"] = active
         };
         if (!string.IsNullOrWhiteSpace(password)) body["password"] = password;
+        if (whatsapp is not null) body["whatsapp"] = string.IsNullOrWhiteSpace(whatsapp) ? null : whatsapp;
         var request = new HttpRequestMessage(HttpMethod.Patch, url)
         {
             Content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json")
@@ -475,6 +476,16 @@ public class SupabaseService
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         return JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync(), _jsonSettings) ?? new();
+    }
+
+    public async Task<string> DetalleCompartirOrdenAsync(string id)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{SupabaseUrl}/rest/v1/ordenes_escolta?id=eq.{Uri.EscapeDataString(id)}&select=consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,observaciones,ordenes_escolta_items(posicion,maquina,origen,destino)");
+        SetHeaders(request);
+        using var response=await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
     }
 
     public async Task<string?> CrearUrlFirmadaPdfOrdenAsync(string path)
