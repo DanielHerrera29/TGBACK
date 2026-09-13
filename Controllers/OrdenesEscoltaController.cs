@@ -73,9 +73,10 @@ public sealed class OrdenesEscoltaController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "No se pudo enviar la orden de escolta {OrdenId}", id);
-            if (ex is EmailDeliveryException { RequestStarted: false }) correoIniciado = false;
+            if (ex is EmailDeliveryException { CanRetrySafely: true }) correoIniciado = false;
             var mensaje = correoIniciado
                 ? "La orden se conserva. El resultado del correo debe verificarse con el proveedor antes de reenviar."
+                : ex is EmailDeliveryException ? MensajeErrorCorreo(ex)
                 : "No se pudo preparar el PDF. La orden se conserva y puede reintentarse.";
             try { await _db.FinalizarEntregaOrdenAsync(session.UserId, id, correoIniciado ? "POR_VERIFICAR" : "ERROR_PREVIO"); }
             catch (Exception saveError) { _logger.LogError(saveError, "No se pudo actualizar el control de entrega {OrdenId}", id); }
@@ -130,8 +131,10 @@ public sealed class OrdenesEscoltaController : ControllerBase
             {
                 System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden =>
                     "La orden fue guardada, pero Brevo rechazo la configuracion del remitente. Revise la clave API y verifique el correo remitente en Brevo.",
+                System.Net.HttpStatusCode.BadRequest =>
+                    "La orden está guardada. Brevo rechazó los datos del correo; administración debe revisar el remitente y el destinatario antes de reintentar.",
                 System.Net.HttpStatusCode.TooManyRequests =>
-                    "La orden fue guardada, pero se alcanzo el limite diario de correos de Brevo. Intente reenviarla manana.",
+                    "La orden está guardada. Brevo limitó temporalmente las solicitudes; espere antes de reintentar el envío.",
                 _ => "La orden fue guardada, pero Brevo no pudo entregar el correo. Intente reenviarla."
             };
         }

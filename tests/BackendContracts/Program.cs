@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -80,7 +81,28 @@ async Task<Microsoft.AspNetCore.Mvc.IActionResult?> FilterResult(string tokenRol
 Check((await FilterResult("operator","operator","/api/remesa") as ObjectResult)?.StatusCode==403,"filtro bloquea URL de remesas al operador");
 Check(await FilterResult("admin","operator","/api/ordenes-escolta") is UnauthorizedResult,"cambio de rol invalida sesión administrativa");
 Check(await FilterResult("operator",null,"/api/ordenes-escolta") is UnauthorizedResult,"usuario desactivado no puede continuar");
-Console.WriteLine("25 comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
+var configured = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+    ["Brevo:ApiKey"]="fixture", ["Brevo:SenderEmail"]="sender@example.invalid"
+}).Build();
+var mailHttp = fake.CreateClient("mail");
+mailHttp.BaseAddress = new Uri("https://example.invalid/");
+var mailOrders = new OrdenesEscoltaController(sessions,db,new EmailSender(configured,mailHttp),NullLogger<OrdenesEscoltaController>.Instance);
+mailOrders.ControllerContext=controller.ControllerContext;
+foreach (var status in new[]{HttpStatusCode.BadRequest,HttpStatusCode.Unauthorized,HttpStatusCode.Forbidden,HttpStatusCode.TooManyRequests,HttpStatusCode.InternalServerError}) {
+    fake.Calls.Clear();
+    fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"id\":\"fixture\",\"consecutivo\":36,\"created_by\":\""+user+"\",\"pdf_path\":null}]"));
+    fake.Replies.Enqueue((HttpStatusCode.OK,"\"RECLAMADA\""));
+    fake.Replies.Enqueue((HttpStatusCode.OK,"{}")); // storage
+    fake.Replies.Enqueue((HttpStatusCode.OK,"{}")); // PDF metadata
+    fake.Replies.Enqueue((status,"{}")); // provider
+    fake.Replies.Enqueue((HttpStatusCode.OK,"null")); // delivery state
+    fake.Replies.Enqueue((HttpStatusCode.OK,"{}")); // visible error
+    Check((await mailOrders.Enviar("fixture",new EnviarOrdenEscoltaDto {PdfBase64="AQID"},default) as ObjectResult)?.StatusCode==502,"rechazo comunicado "+status);
+    var finalCall=fake.Calls.Single(c=>c.Path.EndsWith("/finalizar_entrega_orden"));
+    using var finalJson=JsonDocument.Parse(finalCall.Body!);
+    Check(finalJson.RootElement.GetProperty("p_estado").GetString()==(status==HttpStatusCode.InternalServerError ? "POR_VERIFICAR" : "ERROR_PREVIO"),"rechazo explícito versus resultado incierto "+status);
+}
+Console.WriteLine("35 comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
 static void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name);}
 
 sealed class FakeHttp : HttpMessageHandler,IHttpClientFactory {
@@ -88,10 +110,12 @@ sealed class FakeHttp : HttpMessageHandler,IHttpClientFactory {
  public string Body="{}";
  public string? Sent;
  public int Posts;
+ public List<(string Path,string? Body)> Calls=new();
  public Queue<(HttpStatusCode Status,string Body)> Replies = new();
  public HttpClient CreateClient(string name)=>new(this,false);
  protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct) {
    Sent=request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+   Calls.Add((request.RequestUri!.AbsolutePath,Sent));
    if(request.Method==HttpMethod.Post) Posts++;
    var reply=Replies.Count>0 ? Replies.Dequeue() : (Status,Body);
    return new HttpResponseMessage(reply.Item1){Content=new StringContent(reply.Item2)};
