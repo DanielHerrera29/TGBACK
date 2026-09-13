@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Cryptography;
 using TransportesGutierrez.Api.Dtos;
 using TransportesGutierrez.Api.Services;
 
@@ -26,14 +27,13 @@ public sealed class OrdenesEscoltaController : ControllerBase
     }
 
     [HttpPost("reservar")]
-    public async Task<IActionResult> Reservar([FromBody] CrearOrdenEscoltaDto dto)
+    public IActionResult Reservar([FromBody] CrearOrdenEscoltaDto dto)
     {
         var session = _sessions.Read(Request.Headers.Authorization);
         if (session is null) return Unauthorized();
-        if (!EsValida(dto)) return BadRequest(new { error = "Complete los datos de la orden y de cada viaje." });
-
-        var creada = await _db.CrearOrdenEscoltaAsync(session.UserId, dto);
-        return Ok(new { id = creada.Id, consecutivo = creada.Consecutivo });
+        return StatusCode(StatusCodes.Status426UpgradeRequired, new {
+            error = "Actualice la aplicación. La reserva de órdenes requiere identificación de solicitud para evitar duplicados."
+        });
     }
 
     [HttpPost("{id}/enviar")]
@@ -53,17 +53,32 @@ public sealed class OrdenesEscoltaController : ControllerBase
         if (pdf.Length == 0 || pdf.Length > 12 * 1024 * 1024)
             return BadRequest(new { error = "El PDF es invalido o excede el limite permitido." });
 
+        // Validate before acquiring the delivery lock: no request has reached the mail provider.
+        try { _email.ValidarConfiguracion(); }
+        catch (EmailDeliveryException) {
+            return StatusCode(503, new { code = "CORREO_NO_CONFIGURADO", error = "Falta configurar Brevo en este backend. La orden está guardada; no se inició un nuevo envío." });
+        }
+        var entrega = await _db.ReclamarEntregaOrdenAsync(session.UserId, id, Convert.ToHexString(SHA256.HashData(pdf)));
+        if (entrega == "ENVIADA") return Ok(new { consecutivo = orden.Consecutivo, yaEnviada = true });
+        if (entrega != "RECLAMADA") return Conflict(new { error = "La entrega está en curso o pendiente de verificar. Administración debe consultar el proveedor antes de reenviar." });
+        var correoIniciado = false;
         try
         {
             await _db.SubirPdfOrdenEscoltaAsync(orden, pdf);
+            correoIniciado = true;
             await _email.EnviarOrdenEscoltaAsync(orden.Consecutivo, pdf, cancellationToken);
-            await _db.MarcarOrdenEscoltaEnviadaAsync(id);
+            await _db.FinalizarEntregaOrdenAsync(session.UserId, id, "ENVIADA");
             return Ok(new { consecutivo = orden.Consecutivo, destinatario = "transportegutierrezremesas@gmail.com" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "No se pudo enviar la orden de escolta {OrdenId}", id);
-            var mensaje = MensajeErrorCorreo(ex);
+            if (ex is EmailDeliveryException { RequestStarted: false }) correoIniciado = false;
+            var mensaje = correoIniciado
+                ? "La orden se conserva. El resultado del correo debe verificarse con el proveedor antes de reenviar."
+                : "No se pudo preparar el PDF. La orden se conserva y puede reintentarse.";
+            try { await _db.FinalizarEntregaOrdenAsync(session.UserId, id, correoIniciado ? "POR_VERIFICAR" : "ERROR_PREVIO"); }
+            catch (Exception saveError) { _logger.LogError(saveError, "No se pudo actualizar el control de entrega {OrdenId}", id); }
             await _db.RegistrarErrorEmailOrdenEscoltaAsync(id, mensaje);
             return StatusCode(StatusCodes.Status502BadGateway, new { error = mensaje });
         }

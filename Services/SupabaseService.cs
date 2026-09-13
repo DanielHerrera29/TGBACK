@@ -10,6 +10,22 @@ namespace TransportesGutierrez.Api.Services;
 
 public class SupabaseService
 {
+    public async Task<string> ReclamarEntregaOrdenAsync(string usuario, string orden, string hash) =>
+        JsonConvert.DeserializeObject<string>(await RpcCallAsync("reclamar_entrega_orden",
+            new { p_usuario=usuario,p_orden=orden,p_hash=hash })) ?? "POR_VERIFICAR";
+
+    public Task FinalizarEntregaOrdenAsync(string usuario,string orden,string estado) =>
+        RpcCallAsync("finalizar_entrega_orden",new {p_usuario=usuario,p_orden=orden,p_estado=estado});
+
+    public async Task<string?> RolActivoAsync(string userId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/rest/v1/users?select=role&id=eq.{Uri.EscapeDataString(userId)}&active=eq.true&limit=1");
+        SetHeaders(request);
+        using var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(await response.Content.ReadAsStringAsync());
+        return rows?.FirstOrDefault()?.GetValueOrDefault("role");
+    }
     private static readonly JsonSerializerSettings _jsonSettings = new()
     {
         ContractResolver = new DefaultContractResolver
@@ -355,6 +371,9 @@ public class SupabaseService
             placa_escolta = string.IsNullOrWhiteSpace(dto.PlacaEscolta) ? null : dto.PlacaEscolta.Trim().ToUpperInvariant(),
             nombre_escolta = string.IsNullOrWhiteSpace(dto.NombreEscolta) ? null : dto.NombreEscolta.Trim(),
             observaciones = string.IsNullOrWhiteSpace(dto.Observaciones) ? null : dto.Observaciones.Trim(),
+            cliente_id = string.IsNullOrWhiteSpace(dto.ClienteId) ? null : dto.ClienteId,
+            cliente_documento_snapshot = string.IsNullOrWhiteSpace(dto.ClienteDocumentoSnapshot) ? null : dto.ClienteDocumentoSnapshot.Trim(),
+            vehiculo_placa_snapshot = string.IsNullOrWhiteSpace(dto.VehiculoPlacaSnapshot) ? null : dto.VehiculoPlacaSnapshot.Trim().ToUpperInvariant(),
             created_by = userId
         };
         var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/ordenes_escolta")
@@ -449,7 +468,7 @@ public class SupabaseService
 
     public async Task<List<Dictionary<string, object>>> GetOrdenesEscoltaAsync(string userId, bool esAdmin)
     {
-        var query = "select=id,consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at&order=created_at.desc";
+        var query = "select=id,client_order_id,created_by,estado_captura,consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at&order=created_at.desc";
         if (!esAdmin) query += $"&created_by=eq.{Uri.EscapeDataString(userId)}";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/rest/v1/ordenes_escolta?{query}");
         SetHeaders(request);

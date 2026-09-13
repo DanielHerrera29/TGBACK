@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**;tests/**</DefaultItemExcludes>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>transportes-gutierrez-api-local-development</UserSecretsId>
   </PropertyGroup>

@@ -14,11 +14,17 @@ public sealed class EmailSender
         _http = http;
     }
 
+    public void ValidarConfiguracion()
+    {
+        if (string.IsNullOrWhiteSpace(_configuration["Brevo:ApiKey"]) || string.IsNullOrWhiteSpace(_configuration["Brevo:SenderEmail"]))
+            throw new EmailDeliveryException(null, "Falta configurar Brevo en este backend. La orden está guardada; el correo no se inició.", requestStarted: false);
+    }
     public async Task EnviarOrdenEscoltaAsync(
         long consecutivo,
         byte[] pdf,
         CancellationToken cancellationToken = default)
     {
+        ValidarConfiguracion();
         var destinatario = _configuration["OrdenEscolta:Destinatario"]
             ?? "transportegutierrezremesas@gmail.com";
         var apiKey = _configuration["Brevo:ApiKey"];
@@ -26,7 +32,7 @@ public sealed class EmailSender
         var nombreRemitente = _configuration["Brevo:SenderName"] ?? "Transportes Especiales Gutierrez";
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(remitente))
-            throw new EmailDeliveryException(null, "Falta configurar Brevo.");
+            throw new EmailDeliveryException(null, "Falta configurar Brevo.", requestStarted: false);
 
         var nombreArchivo = $"orden_escolta_{consecutivo:D5}.pdf";
         using var request = new HttpRequestMessage(HttpMethod.Post, "v3/smtp/email");
