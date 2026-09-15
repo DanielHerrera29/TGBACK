@@ -411,7 +411,7 @@ public class SupabaseService
 
     public async Task<OrdenEscoltaRegistrada?> ObtenerOrdenEscoltaAsync(string id)
     {
-        var url = $"{SupabaseUrl}/rest/v1/ordenes_escolta?select=id,consecutivo,created_by,pdf_path&id=eq.{Uri.EscapeDataString(id)}&limit=1";
+        var url = $"{SupabaseUrl}/rest/v1/ordenes_escolta?select=*&id=eq.{Uri.EscapeDataString(id)}&limit=1";
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetHeaders(request);
         using var response = await _http.SendAsync(request);
@@ -423,7 +423,8 @@ public class SupabaseService
             row.GetValueOrDefault("id")?.ToString() ?? "",
             consecutivo,
             row.GetValueOrDefault("created_by")?.ToString() ?? "",
-            row.GetValueOrDefault("pdf_path")?.ToString());
+            row.GetValueOrDefault("pdf_path")?.ToString(),
+            row.GetValueOrDefault("codigo_orden")?.ToString());
     }
 
     public async Task<CredencialEmail?> ObtenerCredencialEmailUsuarioAsync(string userId)
@@ -446,7 +447,7 @@ public class SupabaseService
 
     public async Task SubirPdfOrdenEscoltaAsync(OrdenEscoltaRegistrada orden, byte[] pdf)
     {
-        var path = $"ordenes/{orden.Id}/orden_{orden.Consecutivo:D5}.pdf";
+        var path = $"ordenes/{orden.Id}/orden_{orden.NumeroVisible}.pdf";
         var encodedPath = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"{SupabaseUrl}/storage/v1/object/ordenes-escolta/{encodedPath}")
@@ -469,23 +470,27 @@ public class SupabaseService
 
     public async Task<List<Dictionary<string, object>>> GetOrdenesEscoltaAsync(string userId, bool esAdmin)
     {
-        var query = "select=id,client_order_id,created_by,estado_captura,consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at&order=created_at.desc";
+        var query = "select=*&order=created_at.desc";
         if (!esAdmin) query += $"&created_by=eq.{Uri.EscapeDataString(userId)}";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/rest/v1/ordenes_escolta?{query}");
         SetHeaders(request);
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        return JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync(), _jsonSettings) ?? new();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync(), _jsonSettings) ?? new();
+        var fields = new HashSet<string>("id,client_order_id,created_by,estado_captura,consecutivo,codigo_orden,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at".Split(','));
+        return rows.Select(row => row.Where(p => fields.Contains(p.Key)).ToDictionary(p => p.Key,p => p.Value)).ToList();
     }
 
     public async Task<string> DetalleCompartirOrdenAsync(string id)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{SupabaseUrl}/rest/v1/ordenes_escolta?id=eq.{Uri.EscapeDataString(id)}&select=consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,observaciones,ordenes_escolta_items(posicion,maquina,origen,destino)");
+            $"{SupabaseUrl}/rest/v1/ordenes_escolta?id=eq.{Uri.EscapeDataString(id)}&select=*,ordenes_escolta_items(posicion,maquina,origen,destino)");
         SetHeaders(request);
         using var response=await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync()) ?? new();
+        var fields = new HashSet<string>("consecutivo,codigo_orden,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,observaciones,ordenes_escolta_items".Split(','));
+        return JsonConvert.SerializeObject(rows.Select(row => row.Where(p => fields.Contains(p.Key)).ToDictionary(p => p.Key,p => p.Value)));
     }
 
     public async Task<string?> CrearUrlFirmadaPdfOrdenAsync(string path)
@@ -594,5 +599,7 @@ public class SupabaseService
 }
 
 public sealed record OrdenEscoltaCreada(string Id, long Consecutivo);
-public sealed record OrdenEscoltaRegistrada(string Id, long Consecutivo, string CreatedBy, string? PdfPath);
+public sealed record OrdenEscoltaRegistrada(string Id, long Consecutivo, string CreatedBy, string? PdfPath, string? CodigoOrden = null) {
+ public string NumeroVisible => CodigoOrden ?? Consecutivo.ToString("D5");
+}
 public sealed record CredencialEmail(string CorreoEmail, string ContrasenaApp);

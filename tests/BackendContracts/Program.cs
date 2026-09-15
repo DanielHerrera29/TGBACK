@@ -11,6 +11,7 @@ using TransportesGutierrez.Api.Services;
 using TransportesGutierrez.Api.Configurations;
 using TransportesGutierrez.Api.Dtos;
 
+var checks = 0;
 var sessions = new AppSessionService(new EphemeralDataProtectionProvider());
 var fake = new FakeHttp();
 var controller = new ServiciosController(sessions,fake,Options.Create(new SupabaseOptions {Url="https://example.invalid",Key="fixture"}));
@@ -119,8 +120,36 @@ Check(await contacts.Vehiculos(Guid.Parse(user),new VehiculosEscoltaDto{Placas=[
 fake.Replies.Enqueue((HttpStatusCode.OK,"null"));
 Check(await contacts.Vehiculos(Guid.Parse(user),new VehiculosEscoltaDto{Placas=["ABC123","MNB124","LLO001"]},default) is ContentResult,"admin asigna tres placas");
 using(var actor=JsonDocument.Parse(fake.Sent!)) Check(actor.RootElement.GetProperty("p_admin").GetString()==user,"asignación usa administrador autenticado");
-Console.WriteLine("45 comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
-static void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name);}
+Check(new OrdenEscoltaRegistrada("id",99,user,null,"C123-1").NumeroVisible=="C123-1","folio por placa preferido sobre global");
+fake.Replies.Enqueue((HttpStatusCode.Created,"{}"));
+await new EmailSender(configured,mailHttp).EnviarOrdenEscoltaAsync(99,[1,2,3],default,"C123-1");
+using(var sent=JsonDocument.Parse(fake.Sent!)) {
+ Check(sent.RootElement.GetProperty("subject").GetString()=="Orden de escolta No. C123-1","correo usa código por placa");
+ Check(sent.RootElement.GetProperty("attachment")[0].GetProperty("name").GetString()=="orden_escolta_C123-1.pdf","adjunto usa mismo código");
+}
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"operator");
+Check((await contacts.CrearUsuario(new AltaUsuarioPlacasDto{Id=Guid.NewGuid(),Placas=[]},default) as StatusCodeResult)?.StatusCode==403,"operador no crea cuentas");
+Check((await contacts.Catalogo(default) as StatusCodeResult)?.StatusCode==403,"catálogo de alta solo admin");
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"admin");
+fake.Replies.Enqueue((HttpStatusCode.OK,"\"fixture\""));
+Check(await contacts.CrearUsuario(new AltaUsuarioPlacasDto{Id=Guid.NewGuid(),Nombre="Fixture",Email="fixture@example.invalid",Password="fixture-only",Placas=["ABC123"]},default) is ContentResult,"alta transaccional con placas");
+using(var sent=JsonDocument.Parse(fake.Sent!)) {
+ Check(sent.RootElement.GetProperty("p_admin").GetString()==user,"alta toma actor del token");
+ Check(sent.RootElement.GetProperty("p_placas")[0].GetString()=="ABC123","alta remite selección");
+}
+Check(!ModuleAccessFilter.Permite("operator","PUT","/api/servicios/clientes/fixture/vehiculos/fixture"),"operador no vincula vehículos de clientes");
+controller.Request.Headers.Authorization="";
+Check(await controller.VehiculosDisponibles(default) is UnauthorizedResult,"catálogo de carga requiere sesión");
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"admin");
+fake.Replies.Enqueue((HttpStatusCode.OK,"null"));
+var clienteFixture=Guid.NewGuid(); var vehiculoFixture=Guid.NewGuid();
+Check(await controller.VincularVehiculo(clienteFixture,vehiculoFixture,default) is ContentResult,"vínculo cliente vehículo usa RPC");
+using(var sent=JsonDocument.Parse(fake.Sent!)) {
+ Check(sent.RootElement.GetProperty("p_usuario").GetString()==user,"vínculo usa actor del token");
+ Check(sent.RootElement.GetProperty("p_cliente").GetGuid()==clienteFixture,"vínculo conserva cliente seleccionado");
+}
+Console.WriteLine($"{checks} comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
+void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name); checks++;}
 
 sealed class FakeHttp : HttpMessageHandler,IHttpClientFactory {
  public HttpStatusCode Status=HttpStatusCode.OK;

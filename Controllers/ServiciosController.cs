@@ -52,6 +52,22 @@ public sealed class ServiciosController : ControllerBase
             : Rpc("clientes_para_orden", new { p_usuario = session.UserId }, ct);
     }
 
+    [HttpGet("clientes/vehiculos-disponibles")]
+    public Task<IActionResult> VehiculosDisponibles(CancellationToken ct)
+    {
+        var session = _sessions.Read(Request.Headers.Authorization);
+        return session is null ? Task.FromResult<IActionResult>(Unauthorized())
+            : Rpc("vehiculos_para_vincular_cliente", new { p_usuario = session.UserId }, ct);
+    }
+
+    [HttpPut("clientes/{cliente:guid}/vehiculos/{vehiculo:guid}")]
+    public Task<IActionResult> VincularVehiculo(Guid cliente, Guid vehiculo, CancellationToken ct)
+    {
+        var session = _sessions.Read(Request.Headers.Authorization);
+        return session is null ? Task.FromResult<IActionResult>(Unauthorized())
+            : Rpc("vincular_vehiculo_cliente", new { p_usuario = session.UserId, p_cliente = cliente, p_vehiculo = vehiculo }, ct);
+    }
+
     [HttpPost("clientes")]
     public async Task<IActionResult> CrearCliente([FromBody] CrearClienteRequest data, CancellationToken ct)
     {

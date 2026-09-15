@@ -12,6 +12,28 @@ namespace TransportesGutierrez.Api.Controllers;
 [Route("api/ordenes-escolta/contacto")]
 public sealed class ContactoEscoltaController(AppSessionService sessions, IHttpClientFactory factory, IOptions<SupabaseOptions> options) : ControllerBase
 {
+    [HttpGet("catalogo-placas")]
+    public Task<IActionResult> Catalogo(CancellationToken ct)
+    {
+        var session=sessions.Read(Request.Headers.Authorization);
+        if(session is null) return Task.FromResult<IActionResult>(Unauthorized());
+        if(session.Role!="admin") return Task.FromResult<IActionResult>(StatusCode(403));
+        return Send(HttpMethod.Post,"rpc/catalogo_placas_escolta",new {p_admin=session.UserId},ct);
+    }
+
+    [HttpPost("usuarios")]
+    public Task<IActionResult> CrearUsuario([FromBody] AltaUsuarioPlacasDto dto,CancellationToken ct)
+    {
+        var session=sessions.Read(Request.Headers.Authorization);
+        if(session is null) return Task.FromResult<IActionResult>(Unauthorized());
+        if(session.Role!="admin") return Task.FromResult<IActionResult>(StatusCode(403));
+        if(dto.Id==Guid.Empty || dto.Placas is null || dto.Placas.Length>30)
+            return Task.FromResult<IActionResult>(BadRequest(new {error="Solicitud de usuario inválida"}));
+        return Send(HttpMethod.Post,"rpc/crear_usuario_con_placas",new {
+            p_admin=session.UserId,p_id=dto.Id,p_nombre=dto.Nombre,p_email=dto.Email,p_password=dto.Password,
+            p_role=dto.Role,p_whatsapp=dto.Whatsapp,p_placas=dto.Placas
+        },ct);
+    }
     [HttpGet]
     public Task<IActionResult> Obtener([FromQuery] Guid? usuario, CancellationToken ct)
     {
@@ -56,6 +78,7 @@ public sealed class ContactoEscoltaController(AppSessionService sessions, IHttpC
             if(response.IsSuccessStatusCode) return Content(string.IsNullOrWhiteSpace(body)?"null":body,"application/json");
             using var error=JsonDocument.Parse(body);
             var code=error.RootElement.TryGetProperty("code",out var c)?c.GetString():null;
+            if(code is "22023" or "23505" or "P0001") return StatusCode(code=="22023"?400:409,new {code,error=code=="23505" ? "Ese usuario de acceso ya está registrado." : code=="P0001" ? "El alta ya fue guardada con otros datos. Revise Usuarios antes de repetirla." : "Revise nombre, usuario, contraseña, celular y placas."});
             return StatusCode(code=="42501"?403:503,new {error="No se pudo consultar o guardar el contacto. Verifique la migración de contactos y vuelva a intentar."});
         } catch(HttpRequestException) { return StatusCode(503,new {error="No se pudo conectar con el catálogo de contactos."}); }
         catch(JsonException) { return StatusCode(503,new {error="Respuesta de contactos no válida."}); }
@@ -63,3 +86,12 @@ public sealed class ContactoEscoltaController(AppSessionService sessions, IHttpC
 }
 public sealed class VehiculosEscoltaDto { public string[]? Placas {get;set;} }
 public sealed class DestinoWhatsappDto { public string? Destino {get;set;} }
+public sealed class AltaUsuarioPlacasDto {
+ public Guid Id {get;set;}
+ public string Nombre {get;set;}="";
+ public string Email {get;set;}="";
+ public string Password {get;set;}="";
+ public string Role {get;set;}="operator";
+ public string? Whatsapp {get;set;}
+ public string[]? Placas {get;set;}
+}

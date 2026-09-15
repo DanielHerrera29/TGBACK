@@ -22,7 +22,8 @@ public sealed class EmailSender
     public async Task EnviarOrdenEscoltaAsync(
         long consecutivo,
         byte[] pdf,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? codigoOrden = null)
     {
         ValidarConfiguracion();
         var destinatario = _configuration["OrdenEscolta:Destinatario"]
@@ -34,7 +35,8 @@ public sealed class EmailSender
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(remitente))
             throw new EmailDeliveryException(null, "Falta configurar Brevo.", requestStarted: false);
 
-        var nombreArchivo = $"orden_escolta_{consecutivo:D5}.pdf";
+        var numeroVisible = codigoOrden ?? consecutivo.ToString("D5");
+        var nombreArchivo = $"orden_escolta_{numeroVisible}.pdf";
         using var request = new HttpRequestMessage(HttpMethod.Post, "v3/smtp/email");
         request.Headers.Add("api-key", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -42,7 +44,7 @@ public sealed class EmailSender
         {
             sender = new { email = remitente, name = nombreRemitente },
             to = new[] { new { email = destinatario, name = "Ordenes de escolta" } },
-            subject = $"Orden de escolta No. {consecutivo:D5}",
+            subject = $"Orden de escolta No. {numeroVisible}",
             textContent = "Se adjunta la orden de escolta generada por CargoDespacho.",
             attachment = new[] { new { content = Convert.ToBase64String(pdf), name = nombreArchivo } },
             tags = new[] { "orden-escolta" }
