@@ -159,6 +159,18 @@ fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"nombre\":\"Cliente prueba\",\"nit_o
 Check(await controller.CrearCliente(clientRequest,default) is ConflictResult,"reintento con otra placa no se acepta silenciosamente");
 clientRequest.Placa="BAD";
 Check(await controller.CrearCliente(clientRequest,default) is BadRequestObjectResult,"placa cliente inválida rechazada");
+clientRequest.Placas = new[] { " xyz987 ", "ABC123" };
+fake.Status=HttpStatusCode.OK; fake.Body="{\"id\":\"cliente\"}";
+Check(await controller.CrearCliente(clientRequest,default) is ContentResult,"cliente multiplaca usa RPC transaccional");
+using(var sent=JsonDocument.Parse(fake.Sent!)) {
+ Check(sent.RootElement.GetProperty("p_usuario").GetString()==user,"cliente multiplaca toma actor del token");
+ Check(sent.RootElement.GetProperty("p_placas")[0].GetString()=="XYZ987","placas múltiples normalizadas");
+}
+fake.Status=HttpStatusCode.Forbidden; fake.Body="{\"code\":\"42501\"}";
+Check((await controller.CrearCliente(clientRequest,default) as ObjectResult)?.StatusCode==403,"permiso RPC clientes propagado");
+Check((await controller.UsuariosGestion(default) as ObjectResult)?.StatusCode==403,"lista usuarios respeta permiso RPC");
+controller.Request.Headers.Authorization="";
+Check(await controller.UsuariosGestion(default) is UnauthorizedResult,"lista usuarios requiere sesión");
 Console.WriteLine($"{checks} comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
 void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name); checks++;}
 

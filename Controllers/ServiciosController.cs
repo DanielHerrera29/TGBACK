@@ -73,6 +73,12 @@ public sealed class ServiciosController : ControllerBase
     {
         var session = _sessions.Read(Request.Headers.Authorization);
         if (session is null) return Unauthorized();
+        if (data.Placas is not null)
+            return await Rpc("registrar_cliente_placas", new {
+                p_usuario = session.UserId, p_id = data.Id, p_tipo = data.Tipo,
+                p_nombre = data.Nombre, p_documento = data.Documento,
+                p_placas = data.Placas.Select(p => p?.Trim().ToUpperInvariant()).ToArray()
+            }, ct);
         data.Placa = string.IsNullOrWhiteSpace(data.Placa) ? null : data.Placa.Trim().ToUpperInvariant();
         if (data.Placa is not null && !System.Text.RegularExpressions.Regex.IsMatch(data.Placa, @"^[A-Z]{3}[0-9]{3}$"))
             return BadRequest(new { error = "Placa inválida: use tres letras y tres números." });
@@ -118,6 +124,14 @@ public sealed class ServiciosController : ControllerBase
         using var result = JsonDocument.Parse(await created.Content.ReadAsStringAsync(ct));
         return Content(result.RootElement[0].GetRawText(), "application/json");
     }
+    [HttpGet("usuarios-gestion")]
+    public Task<IActionResult> UsuariosGestion(CancellationToken ct)
+    {
+        var session = _sessions.Read(Request.Headers.Authorization);
+        return session is null ? Task.FromResult<IActionResult>(Unauthorized())
+            : Rpc("usuarios_para_gestion", new { p_usuario = session.UserId }, ct);
+    }
+
     private async Task<IActionResult> Rpc(string function, object parameters, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_options.Url.TrimEnd('/')}/rest/v1/rpc/{function}");
@@ -139,7 +153,7 @@ public sealed class ServiciosController : ControllerBase
         return StatusCode(status, new { error = status switch {
             403 => "Sin permiso para esta operación.",
             409 => "El borrador cambió o la clave ya fue utilizada. Recupere la operación pendiente.",
-            400 => "Revise los datos y los identificadores de los viajes.",
+            400 => function == "registrar_cliente_placas" ? "Revise nombre, documento y placas. El documento puede estar registrado en otro cliente." : "Revise los datos y los identificadores de los viajes.",
             _ => "No se pudo guardar. Conserve el borrador y reintente; verifique la migración del servidor."
         }});
     }
@@ -153,6 +167,7 @@ public sealed class GuardarBorradorRequest
 
 public sealed class CrearClienteRequest
 {
+    public string[]? Placas { get; set; }
     public string? Placa { get; set; }
     public Guid Id { get; set; }
     public string Tipo { get; set; } = "";
