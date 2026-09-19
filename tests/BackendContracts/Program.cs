@@ -148,6 +148,17 @@ using(var sent=JsonDocument.Parse(fake.Sent!)) {
  Check(sent.RootElement.GetProperty("p_usuario").GetString()==user,"vínculo usa actor del token");
  Check(sent.RootElement.GetProperty("p_cliente").GetGuid()==clienteFixture,"vínculo conserva cliente seleccionado");
 }
+clientRequest.Placa=" xyz987 ";
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"admin\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"[]"));
+fake.Replies.Enqueue((HttpStatusCode.Created,"[{\"id\":\"fixture\",\"placa_carga\":\"XYZ987\"}]"));
+Check(await controller.CrearCliente(clientRequest,default) is ContentResult,"cliente y placa se crean juntos");
+using(var sent=JsonDocument.Parse(fake.Sent!)) Check(sent.RootElement.GetProperty("placa_carga").GetString()=="XYZ987","placa directa normalizada persistida");
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"admin\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"nombre\":\"Cliente prueba\",\"nit_o_documento\":\"900123456\",\"tipo_cliente\":\"empresa\",\"placa_carga\":\"ABC123\"}]"));
+Check(await controller.CrearCliente(clientRequest,default) is ConflictResult,"reintento con otra placa no se acepta silenciosamente");
+clientRequest.Placa="BAD";
+Check(await controller.CrearCliente(clientRequest,default) is BadRequestObjectResult,"placa cliente inválida rechazada");
 Console.WriteLine($"{checks} comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
 void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name); checks++;}
 

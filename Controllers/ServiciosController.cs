@@ -73,6 +73,9 @@ public sealed class ServiciosController : ControllerBase
     {
         var session = _sessions.Read(Request.Headers.Authorization);
         if (session is null) return Unauthorized();
+        data.Placa = string.IsNullOrWhiteSpace(data.Placa) ? null : data.Placa.Trim().ToUpperInvariant();
+        if (data.Placa is not null && !System.Text.RegularExpressions.Regex.IsMatch(data.Placa, @"^[A-Z]{3}[0-9]{3}$"))
+            return BadRequest(new { error = "Placa inválida: use tres letras y tres números." });
         if (data.Id == Guid.Empty || data.Tipo is not ("empresa" or "persona") || string.IsNullOrWhiteSpace(data.Nombre)
             || data.Nombre.Length > 150 || !System.Text.RegularExpressions.Regex.IsMatch(data.Documento ?? "", @"^\d{5,20}$"))
             return BadRequest(new { error = "Revise nombre, tipo y documento." });
@@ -99,13 +102,17 @@ public sealed class ServiciosController : ControllerBase
         if (existing.RootElement.GetArrayLength() > 0) {
             var row = existing.RootElement[0];
             if (row.GetProperty("nit_o_documento").GetString() != data.Documento || row.GetProperty("nombre").GetString() != data.Nombre.Trim()
-                || row.GetProperty("tipo_cliente").GetString() != data.Tipo) return Conflict();
+                || row.GetProperty("tipo_cliente").GetString() != data.Tipo
+                || (row.TryGetProperty("placa_carga", out var placaAnterior) ? placaAnterior.GetString() : null) != data.Placa) return Conflict();
             return Content(row.GetRawText(), "application/json");
         }
-        using var created = await Send(HttpMethod.Post, "clientes", new {
-            id = data.Id, tipo_cliente = data.Tipo, nombre = data.Nombre.Trim(),
-            razon_social = data.Tipo == "empresa" ? data.Nombre.Trim() : null, nit_o_documento = data.Documento, activo = true
-        });
+        var campos = new Dictionary<string,object?> {
+            ["id"] = data.Id, ["tipo_cliente"] = data.Tipo, ["nombre"] = data.Nombre.Trim(),
+            ["razon_social"] = data.Tipo == "empresa" ? data.Nombre.Trim() : null,
+            ["nit_o_documento"] = data.Documento, ["activo"] = true
+        };
+        if (data.Placa is not null) campos["placa_carga"] = data.Placa;
+        using var created = await Send(HttpMethod.Post, "clientes", campos);
         if (created.StatusCode == System.Net.HttpStatusCode.Conflict) return Conflict();
         if (!created.IsSuccessStatusCode) return StatusCode(503);
         using var result = JsonDocument.Parse(await created.Content.ReadAsStringAsync(ct));
@@ -146,6 +153,7 @@ public sealed class GuardarBorradorRequest
 
 public sealed class CrearClienteRequest
 {
+    public string? Placa { get; set; }
     public Guid Id { get; set; }
     public string Tipo { get; set; } = "";
     public string Nombre { get; set; } = "";
