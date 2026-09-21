@@ -170,7 +170,7 @@ public class RemesaController : ControllerBase
             return BadRequest(new
             {
                 exito = false,
-                error = "Ingrese un NIT de destinatario completo antes de enviar al RNDC. Para pruebas use 9001112221."
+                error = "Revise la identificación del destinatario y su registro en el maestro de Terceros del RNDC."
             });
         }
 
@@ -237,6 +237,14 @@ public class RemesaController : ControllerBase
         dto.DescripcionProducto = descripcionProducto;
 
         var remesaId = await _db.CrearRemesaDraftAsync(dto, consecutivo, xml);
+        if (string.IsNullOrWhiteSpace(remesaId))
+        {
+            return StatusCode(503, new
+            {
+                exito = false,
+                error = "No se pudo guardar la remesa. No se envió al RNDC."
+            });
+        }
         var resultado = await _rndc.EnviarAsync(xml, 3, simulacion: settings.Simulacion);
 
         if (resultado.Exito)

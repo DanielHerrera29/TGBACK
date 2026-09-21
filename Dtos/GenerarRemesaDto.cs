@@ -46,5 +46,6 @@ public class GenerarRemesaDto
     public string? RawMessage { get; set; }
     public string? ClienteNombre { get; set; }
     public string? Obra { get; set; }
+    public string? Programa { get; set; }
     public string? Observaciones { get; set; }
 }

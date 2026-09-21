@@ -197,6 +197,7 @@ public class SupabaseService
             RawMessage = dto.RawMessage,
             ClienteNombre = dto.ClienteNombre,
             Obra = dto.Obra,
+            Programa = dto.Programa,
             Observaciones = dto.Observaciones,
             XmlEnviado = xml,
             Estado = "draft",

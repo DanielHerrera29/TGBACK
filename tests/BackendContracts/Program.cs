@@ -171,6 +171,78 @@ Check((await controller.CrearCliente(clientRequest,default) as ObjectResult)?.St
 Check((await controller.UsuariosGestion(default) as ObjectResult)?.StatusCode==403,"lista usuarios respeta permiso RPC");
 controller.Request.Headers.Authorization="";
 Check(await controller.UsuariosGestion(default) is UnauthorizedResult,"lista usuarios requiere sesión");
+// Contrato de escritura y lectura: datos operativos no deben perderse en el DTO.
+var remesaDto = JsonSerializer.Deserialize<GenerarRemesaDto>(
+    "{\"programa\":\"Programa fixture\",\"obra\":\"Obra fixture\",\"pesoKg\":18000}",
+    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+fake.Replies.Enqueue((HttpStatusCode.Created,"[{\"id\":\"fixture-remesa\"}]"));
+Check(await db.CrearRemesaDraftAsync(remesaDto,"FIXTURE-1","<root />")=="fixture-remesa","remesa obtiene identidad persistida");
+string storedRemesa = fake.Sent!;
+using(var sent=JsonDocument.Parse(storedRemesa)) {
+ Check(sent.RootElement.GetProperty("programa").GetString()=="Programa fixture","programa llega al INSERT");
+ Check(sent.RootElement.GetProperty("obra").GetString()=="Obra fixture","obra sigue independiente");
+}
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+storedRemesa+"]"));
+Check((await db.GetRemesaAsync("fixture-remesa"))?.Programa=="Programa fixture","programa se deserializa al recuperar");
+// Un fallo de persistencia no puede emitir un documento huérfano en RNDC.
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"empresa_nit\":\"fixture\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"\"FIXTURE-2\""));
+fake.Replies.Enqueue((HttpStatusCode.ServiceUnavailable,"{}"));
+var soapFake = new FakeHttp();
+var remesaController = new RemesaController(new XmlGeneratorService(),
+ new RndcClient(soapFake.CreateClient("rndc"),NullLogger<RndcClient>.Instance,noMailConfig),db);
+Check((await remesaController.Generar(new GenerarRemesaDto {DestinatarioNit="1234567",PesoKg=18000}) as ObjectResult)?.StatusCode==503,"error guardando remesa se informa");
+Check(soapFake.Calls.Count==0,"persistencia fallida no llama RNDC");
+Check(ModeloTegController.DateFilters(null,null)=="","TEG todos no aplica filtro");
+Check(ModeloTegController.DateFilters("2026-09-01","2026-09-30").Contains("lt.2026-10-01T05:00:00Z"),"TEG fin inclusivo hora Colombia");
+try { ModeloTegController.DateFilters("2026-09-30","2026-09-01"); Check(false,"TEG rango invertido"); } catch(ArgumentException) { Check(true,"TEG rechaza rango invertido"); }
+var tegFixture = System.Text.Json.Nodes.JsonNode.Parse("""
+{"id":"00000000-0000-0000-0000-000000000001","folio":1,"empresa":"=HYPERLINK(\"invalid\")","service_type":"PROPIO","estado_operativo":"BORRADOR","created_at":"2026-09-20T04:30:00Z","servicio_trayectos":{"maquina":"Excavadora","origen":"Bogotá","destino":"Medellín","placa_camabaja":"ABC123","peso_toneladas":18},"ordenes_escolta_items":[{"posicion":1,"ordenes_escolta":{"codigo_orden":"C123-1","nombre_escolta":"Escolta fixture","placa_escolta":"ABC123","observaciones":"Nota & detalle"}}]}
+""")!;
+var tegRow=ModeloTegWorkbook.Project(tegFixture);
+Check(tegRow.Cells.Length==44 && ModeloTegWorkbook.Headers.Length==44,"TEG 44 columnas exactas");
+Check(tegRow.Cells[0] is null && tegRow.Cells[4] is null && tegRow.Cells[35] is null,"TEG no inventa fechas documentos ni total");
+Check(Equals(tegRow.Cells[26],18m) && Equals(tegRow.Cells[7],"PR"),"TEG conserva toneladas y tipo servicio");
+var tegBytes=ModeloTegWorkbook.Create([tegRow],null,null,"2026-09-20T12:00:00Z");
+using(var z=new System.IO.Compression.ZipArchive(new MemoryStream(tegBytes))) {
+ using var sheet=z.GetEntry("xl/worksheets/sheet1.xml")!.Open();
+ var doc=System.Xml.Linq.XDocument.Load(sheet);var ns=System.Xml.Linq.XNamespace.Get("http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+ Check(doc.Descendants(ns+"row").Count()==2,"TEG XML filas con namespace válido");
+ Check(!doc.Descendants(ns+"f").Any(),"TEG textos no se convierten en fórmulas");
+ Check(doc.Descendants(ns+"c").Single(c=>(string?)c.Attribute("r")=="T2").Attribute("t")?.Value=="inlineStr","TEG evita inyección de fórmula");
+}
+Directory.CreateDirectory("artifacts");File.WriteAllBytes("artifacts/modelo-teg-fixture.xlsx",tegBytes);
+Check(!ModuleAccessFilter.Permite("operator","GET","/api/modelo-teg/excel"),"escolta no exporta todos los servicios");
+var tegController=new ModeloTegController(sessions,db,fake,Options.Create(new SupabaseOptions{Url="https://example.invalid",Key="fixture"}));
+tegController.ControllerContext=controller.ControllerContext;
+Check((await tegController.Excel(null,null,null,default) as StatusCodeResult)?.StatusCode==403,"exportación sin sesión bloqueada");
+controller.Request.Headers.Authorization="Bearer "+sessions.Create(user,"admin");
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"admin\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+tegFixture.ToJsonString()+"]"));
+var nextFixture=tegFixture.DeepClone();nextFixture["id"]="00000000-0000-0000-0000-000000000002";
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+nextFixture.ToJsonString()+"]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"[]"));
+var exportResult=await tegController.Excel(null,null,null,default) as FileContentResult;
+Check(exportResult is not null,"TEG exportación autorizada");
+using(var z=new System.IO.Compression.ZipArchive(new MemoryStream(exportResult!.FileContents))) {
+ using var s=z.GetEntry("xl/worksheets/sheet1.xml")!.Open();
+ Check(System.Xml.Linq.XDocument.Load(s).Descendants(System.Xml.Linq.XName.Get("row","http://schemas.openxmlformats.org/spreadsheetml/2006/main")).Count()==3,"TEG exporta todas las páginas aunque Supabase entregue lotes cortos");
+}
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"operator\"}]"));
+Check((await tegController.Excel(null,null,null,default) as StatusCodeResult)?.StatusCode==403,"TEG cambio de rol invalida acceso");
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"admin\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+tegFixture.ToJsonString()+"]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+nextFixture.ToJsonString()+"]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"[]"));
+var listTeg=await tegController.List("2026-09-01","2026-09-30",null,null,default) as OkObjectResult;
+using(var result=JsonDocument.Parse(JsonSerializer.Serialize(listTeg!.Value))) {
+ Check(result.RootElement.GetProperty("rows").GetArrayLength()==2,"TEG lista completa páginas cortas");
+ Check(result.RootElement.GetProperty("next").ValueKind==JsonValueKind.Null,"TEG fin de lista comprobado");
+}
+fake.Replies.Enqueue((HttpStatusCode.OK,"[{\"role\":\"admin\"}]"));
+fake.Replies.Enqueue((HttpStatusCode.OK,"["+tegFixture.ToJsonString()+"]"));
+fake.Replies.Enqueue((HttpStatusCode.ServiceUnavailable,"{}"));
+Check((await tegController.Excel(null,null,null,default) as ObjectResult)?.StatusCode==503,"TEG fallo en otra página no entrega archivo parcial");
 Console.WriteLine($"{checks} comprobaciones de contrato aprobadas; HTTP simulado, sin base ni correo.");
 void Check(bool value,string name) {if(!value)throw new Exception("Falló: "+name); checks++;}
 
