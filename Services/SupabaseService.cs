@@ -313,14 +313,19 @@ public class SupabaseService
         return remesas.Where(r => !usedIds.Contains(r.Id)).ToList();
     }
 
-    public async Task<(string Id, string Role)?> ValidarUsuarioAppAsync(string email, string password)
+    public async Task<Dictionary<string, object>?> ValidarUsuarioAppAsync(string email, string password)
     {
         var safeEmail = Uri.EscapeDataString(email);
         var safePassword = Uri.EscapeDataString(password);
         // El correo se compara sin distinguir mayusculas/minusculas (ilike) porque el frontend
         // siempre lo envia en minusculas, sin importar como haya quedado guardado en la tabla.
         // La contrasena si distingue mayusculas/minusculas (eq).
-        var url = $"{SupabaseUrl}/rest/v1/users?select=id,role&email=ilike.{safeEmail}&password=eq.{safePassword}&active=eq.true&limit=1";
+        // Se trae el usuario completo (no solo id,role) porque el front (AuthProvider._parse en
+        // Flutter) necesita name/email/active/created_at/whatsapp para armar la sesion local.
+        // Antes solo se pedia id,role y un login EXITOSO quedaba sin "user" en la respuesta:
+        // el front tronaba en silencio al intentar leer data['user'] y mostraba el mensaje
+        // generico "No se pudo iniciar o guardar la sesión" aunque las credenciales fueran correctas.
+        var url = $"{SupabaseUrl}/rest/v1/users?select=id,role,name,email,active,created_at,whatsapp&email=ilike.{safeEmail}&password=eq.{safePassword}&active=eq.true&limit=1";
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetHeaders(request);
         var response = await _http.SendAsync(request);
@@ -334,7 +339,7 @@ public class SupabaseService
         var users = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(body, _jsonSettings);
         var user = users?.FirstOrDefault();
         if (user != null)
-            return (user.GetValueOrDefault("id")?.ToString() ?? "", user.GetValueOrDefault("role")?.ToString() ?? "operator");
+            return user;
 
         // No hubo coincidencia exacta de correo+contrasena+activo. Para diagnosticar sin exponer la
         // contrasena en los logs, consultamos el mismo correo sin la contrasena y solo registramos la causa.

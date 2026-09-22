@@ -16,7 +16,9 @@ public class SesionController : ControllerBase
     {
         var user = await _db.ValidarUsuarioAppAsync(dto.Email, dto.Password);
         if (user == null) return Unauthorized(new { error = "Credenciales inválidas" });
-        return Ok(new { token = _sessions.Create(user.Value.Id, user.Value.Role) });
+        var id = user.GetValueOrDefault("id")?.ToString() ?? "";
+        var role = user.GetValueOrDefault("role")?.ToString() ?? "operator";
+        return Ok(new { token = _sessions.Create(id, role), user });
     }
 }
 
