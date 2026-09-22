@@ -36,6 +36,7 @@ public sealed class FirmaOtpService(HttpClient http, IConfiguration config, Supa
             to=new[]{new{email=email.Trim().ToLowerInvariant(),name}},
             subject="Código para habilitar la firma — TEG",
             textContent=$"Su código para habilitar la firma de la orden {order} es: {code}\nVence en 10 minutos. Ingréselo en la app únicamente si está participando en esta orden. Este código no firma el documento: habilita el botón Firmar. Si no lo solicitó, ignore este correo.",
+            htmlContent=BuildHtml(order,code),
             tags=new[]{"codigo-firma"}
         });
         using var response=await http.SendAsync(request);
@@ -57,4 +58,39 @@ public sealed class FirmaOtpService(HttpClient http, IConfiguration config, Supa
         return await Operation(user,order,"ENVIADO",id:id,message:message);
     }
     public Task<JObject> Check(string user,string order,string id,string code) => Operation(user,order,"COMPROBAR",id:id,hash:CodeHash(user,order,id,code));
+
+    // order es un GUID y code son seis digitos (ambos generados/validados por el propio backend),
+    // asi que se interpolan directo sin riesgo de inyeccion HTML.
+    private static string BuildHtml(string order,string code) => $"""
+        <!DOCTYPE html>
+        <html lang="es">
+          <body style="margin:0;padding:0;background-color:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;padding:32px 0;">
+              <tr>
+                <td align="center">
+                  <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;max-width:480px;">
+                    <tr>
+                      <td style="background-color:#0b3d63;padding:20px 32px;">
+                        <span style="color:#ffffff;font-size:17px;font-weight:bold;letter-spacing:0.5px;">TRANSPORTE GUTIERREZ</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:32px;">
+                        <p style="margin:0 0 6px 0;font-size:15px;color:#333333;">Se solicitó un código para habilitar la firma de la orden de escolta:</p>
+                        <p style="margin:0 0 24px 0;font-size:12px;color:#8a8a8a;font-family:'Courier New',monospace;">{order}</p>
+                        <div style="text-align:center;margin:0 0 24px 0;">
+                          <span style="display:inline-block;background-color:#f0f4f8;border:1px solid #d7e0e8;border-radius:6px;padding:16px 28px;font-size:30px;font-weight:bold;letter-spacing:8px;color:#0b3d63;">{code}</span>
+                        </div>
+                        <p style="margin:0 0 12px 0;font-size:14px;color:#333333;">Vence en <strong>10 minutos</strong>.</p>
+                        <p style="margin:0 0 12px 0;font-size:13px;color:#666666;">Ingréselo en la app únicamente si está participando en esta orden. Este código no firma el documento: solo habilita el botón <strong>Firmar</strong>.</p>
+                        <p style="margin:0;font-size:13px;color:#999999;">Si no lo solicitó, ignore este correo.</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+        """;
 }
