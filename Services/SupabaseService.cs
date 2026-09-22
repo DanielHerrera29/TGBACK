@@ -317,7 +317,10 @@ public class SupabaseService
     {
         var safeEmail = Uri.EscapeDataString(email);
         var safePassword = Uri.EscapeDataString(password);
-        var url = $"{SupabaseUrl}/rest/v1/users?select=id,role&email=eq.{safeEmail}&password=eq.{safePassword}&active=eq.true&limit=1";
+        // El correo se compara sin distinguir mayusculas/minusculas (ilike) porque el frontend
+        // siempre lo envia en minusculas, sin importar como haya quedado guardado en la tabla.
+        // La contrasena si distingue mayusculas/minusculas (eq).
+        var url = $"{SupabaseUrl}/rest/v1/users?select=id,role&email=ilike.{safeEmail}&password=eq.{safePassword}&active=eq.true&limit=1";
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetHeaders(request);
         var response = await _http.SendAsync(request);
@@ -337,7 +340,7 @@ public class SupabaseService
         // contrasena en los logs, consultamos el mismo correo sin la contrasena y solo registramos la causa.
         try
         {
-            var diagUrl = $"{SupabaseUrl}/rest/v1/users?select=active&email=eq.{safeEmail}&limit=1";
+            var diagUrl = $"{SupabaseUrl}/rest/v1/users?select=active&email=ilike.{safeEmail}&limit=1";
             var diagRequest = new HttpRequestMessage(HttpMethod.Get, diagUrl);
             SetHeaders(diagRequest);
             var diagResponse = await _http.SendAsync(diagRequest);
