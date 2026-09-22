@@ -9,6 +9,9 @@ public sealed class CrearOrdenEscoltaDto
     public string? NombreEscolta { get; set; }
     public string? Observaciones { get; set; }
     public List<OrdenEscoltaItemDto> Viajes { get; set; } = new();
+    public string? ClienteId { get; set; }
+    public string? ClienteDocumentoSnapshot { get; set; }
+    public string? VehiculoPlacaSnapshot { get; set; }
 }
 
 public sealed class OrdenEscoltaItemDto

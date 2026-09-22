@@ -14,11 +14,18 @@ public sealed class EmailSender
         _http = http;
     }
 
+    public void ValidarConfiguracion()
+    {
+        if (string.IsNullOrWhiteSpace(_configuration["Brevo:ApiKey"]) || string.IsNullOrWhiteSpace(_configuration["Brevo:SenderEmail"]))
+            throw new EmailDeliveryException(null, "Falta configurar Brevo en este backend. La orden está guardada; el correo no se inició.", requestStarted: false);
+    }
     public async Task EnviarOrdenEscoltaAsync(
         long consecutivo,
         byte[] pdf,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? codigoOrden = null)
     {
+        ValidarConfiguracion();
         var destinatario = _configuration["OrdenEscolta:Destinatario"]
             ?? "transportegutierrezremesas@gmail.com";
         var apiKey = _configuration["Brevo:ApiKey"];
@@ -26,9 +33,10 @@ public sealed class EmailSender
         var nombreRemitente = _configuration["Brevo:SenderName"] ?? "Transportes Especiales Gutierrez";
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(remitente))
-            throw new EmailDeliveryException(null, "Falta configurar Brevo.");
+            throw new EmailDeliveryException(null, "Falta configurar Brevo.", requestStarted: false);
 
-        var nombreArchivo = $"orden_escolta_{consecutivo:D5}.pdf";
+        var numeroVisible = codigoOrden ?? consecutivo.ToString("D5");
+        var nombreArchivo = $"orden_escolta_{numeroVisible}.pdf";
         using var request = new HttpRequestMessage(HttpMethod.Post, "v3/smtp/email");
         request.Headers.Add("api-key", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -36,7 +44,7 @@ public sealed class EmailSender
         {
             sender = new { email = remitente, name = nombreRemitente },
             to = new[] { new { email = destinatario, name = "Ordenes de escolta" } },
-            subject = $"Orden de escolta No. {consecutivo:D5}",
+            subject = $"Orden de escolta No. {numeroVisible}",
             textContent = "Se adjunta la orden de escolta generada por CargoDespacho.",
             attachment = new[] { new { content = Convert.ToBase64String(pdf), name = nombreArchivo } },
             tags = new[] { "orden-escolta" }

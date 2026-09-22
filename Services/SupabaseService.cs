@@ -10,6 +10,23 @@ namespace TransportesGutierrez.Api.Services;
 
 public class SupabaseService
 {
+    public async Task<Newtonsoft.Json.Linq.JObject> FirmaOtpAsync(object parameters) => Newtonsoft.Json.Linq.JObject.Parse(await RpcCallAsync("firma_codigo_email_operacion", parameters));
+    public async Task<string> ReclamarEntregaOrdenAsync(string usuario, string orden, string hash) =>
+        JsonConvert.DeserializeObject<string>(await RpcCallAsync("reclamar_entrega_orden",
+            new { p_usuario=usuario,p_orden=orden,p_hash=hash })) ?? "POR_VERIFICAR";
+
+    public Task FinalizarEntregaOrdenAsync(string usuario,string orden,string estado) =>
+        RpcCallAsync("finalizar_entrega_orden",new {p_usuario=usuario,p_orden=orden,p_estado=estado});
+
+    public async Task<string?> RolActivoAsync(string userId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/rest/v1/users?select=role&id=eq.{Uri.EscapeDataString(userId)}&active=eq.true&limit=1");
+        SetHeaders(request);
+        using var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(await response.Content.ReadAsStringAsync());
+        return rows?.FirstOrDefault()?.GetValueOrDefault("role");
+    }
     private static readonly JsonSerializerSettings _jsonSettings = new()
     {
         ContractResolver = new DefaultContractResolver
@@ -181,6 +198,7 @@ public class SupabaseService
             RawMessage = dto.RawMessage,
             ClienteNombre = dto.ClienteNombre,
             Obra = dto.Obra,
+            Programa = dto.Programa,
             Observaciones = dto.Observaciones,
             XmlEnviado = xml,
             Estado = "draft",
@@ -303,13 +321,48 @@ public class SupabaseService
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetHeaders(request);
         var response = await _http.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Login: Supabase respondio {StatusCode} al validar {Email}. Cuerpo: {Body}", (int)response.StatusCode, email, errorBody);
+            return null;
+        }
         var body = await response.Content.ReadAsStringAsync();
         var users = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(body, _jsonSettings);
         var user = users?.FirstOrDefault();
-        return user == null
-            ? null
-            : (user.GetValueOrDefault("id")?.ToString() ?? "", user.GetValueOrDefault("role")?.ToString() ?? "operator");
+        if (user != null)
+            return (user.GetValueOrDefault("id")?.ToString() ?? "", user.GetValueOrDefault("role")?.ToString() ?? "operator");
+
+        // No hubo coincidencia exacta de correo+contrasena+activo. Para diagnosticar sin exponer la
+        // contrasena en los logs, consultamos el mismo correo sin la contrasena y solo registramos la causa.
+        try
+        {
+            var diagUrl = $"{SupabaseUrl}/rest/v1/users?select=active&email=eq.{safeEmail}&limit=1";
+            var diagRequest = new HttpRequestMessage(HttpMethod.Get, diagUrl);
+            SetHeaders(diagRequest);
+            var diagResponse = await _http.SendAsync(diagRequest);
+            if (diagResponse.IsSuccessStatusCode)
+            {
+                var diagBody = await diagResponse.Content.ReadAsStringAsync();
+                var diagUsers = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(diagBody, _jsonSettings);
+                var diagUser = diagUsers?.FirstOrDefault();
+                if (diagUser == null)
+                    _logger.LogInformation("Login: no existe ningun usuario con el correo {Email} (revise mayusculas/espacios).", email);
+                else if (diagUser.GetValueOrDefault("active") is bool active && !active)
+                    _logger.LogInformation("Login: el usuario {Email} existe pero esta inactivo (active=false).", email);
+                else
+                    _logger.LogInformation("Login: el usuario {Email} existe y esta activo, pero la contrasena no coincide exactamente.", email);
+            }
+            else
+            {
+                _logger.LogWarning("Login: diagnostico por correo {Email} respondio {StatusCode}.", email, (int)diagResponse.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Login: fallo el diagnostico por correo {Email}.", email);
+        }
+        return null;
     }
 
     public async Task GuardarCredencialEmailUsuarioAsync(string userId, string correoEmail, string contrasenaApp)
@@ -325,7 +378,7 @@ public class SupabaseService
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task ActualizarUsuarioAsync(string userId, string name, string email, string? password, string role, bool active)
+    public async Task ActualizarUsuarioAsync(string userId, string name, string email, string? password, string role, bool active, string? whatsapp = null)
     {
         var url = $"{SupabaseUrl}/rest/v1/users?id=eq.{Uri.EscapeDataString(userId)}";
         var body = new Dictionary<string, object?>
@@ -336,6 +389,7 @@ public class SupabaseService
             ["active"] = active
         };
         if (!string.IsNullOrWhiteSpace(password)) body["password"] = password;
+        if (whatsapp is not null) body["whatsapp"] = string.IsNullOrWhiteSpace(whatsapp) ? null : whatsapp;
         var request = new HttpRequestMessage(HttpMethod.Patch, url)
         {
             Content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json")
@@ -355,6 +409,9 @@ public class SupabaseService
             placa_escolta = string.IsNullOrWhiteSpace(dto.PlacaEscolta) ? null : dto.PlacaEscolta.Trim().ToUpperInvariant(),
             nombre_escolta = string.IsNullOrWhiteSpace(dto.NombreEscolta) ? null : dto.NombreEscolta.Trim(),
             observaciones = string.IsNullOrWhiteSpace(dto.Observaciones) ? null : dto.Observaciones.Trim(),
+            cliente_id = string.IsNullOrWhiteSpace(dto.ClienteId) ? null : dto.ClienteId,
+            cliente_documento_snapshot = string.IsNullOrWhiteSpace(dto.ClienteDocumentoSnapshot) ? null : dto.ClienteDocumentoSnapshot.Trim(),
+            vehiculo_placa_snapshot = string.IsNullOrWhiteSpace(dto.VehiculoPlacaSnapshot) ? null : dto.VehiculoPlacaSnapshot.Trim().ToUpperInvariant(),
             created_by = userId
         };
         var request = new HttpRequestMessage(HttpMethod.Post, $"{SupabaseUrl}/rest/v1/ordenes_escolta")
@@ -391,7 +448,7 @@ public class SupabaseService
 
     public async Task<OrdenEscoltaRegistrada?> ObtenerOrdenEscoltaAsync(string id)
     {
-        var url = $"{SupabaseUrl}/rest/v1/ordenes_escolta?select=id,consecutivo,created_by,pdf_path&id=eq.{Uri.EscapeDataString(id)}&limit=1";
+        var url = $"{SupabaseUrl}/rest/v1/ordenes_escolta?select=*&id=eq.{Uri.EscapeDataString(id)}&limit=1";
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         SetHeaders(request);
         using var response = await _http.SendAsync(request);
@@ -403,7 +460,8 @@ public class SupabaseService
             row.GetValueOrDefault("id")?.ToString() ?? "",
             consecutivo,
             row.GetValueOrDefault("created_by")?.ToString() ?? "",
-            row.GetValueOrDefault("pdf_path")?.ToString());
+            row.GetValueOrDefault("pdf_path")?.ToString(),
+            row.GetValueOrDefault("codigo_orden")?.ToString());
     }
 
     public async Task<CredencialEmail?> ObtenerCredencialEmailUsuarioAsync(string userId)
@@ -426,7 +484,7 @@ public class SupabaseService
 
     public async Task SubirPdfOrdenEscoltaAsync(OrdenEscoltaRegistrada orden, byte[] pdf)
     {
-        var path = $"ordenes/{orden.Id}/orden_{orden.Consecutivo:D5}.pdf";
+        var path = $"ordenes/{orden.Id}/orden_{orden.NumeroVisible}.pdf";
         var encodedPath = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"{SupabaseUrl}/storage/v1/object/ordenes-escolta/{encodedPath}")
@@ -449,13 +507,27 @@ public class SupabaseService
 
     public async Task<List<Dictionary<string, object>>> GetOrdenesEscoltaAsync(string userId, bool esAdmin)
     {
-        var query = "select=id,consecutivo,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at&order=created_at.desc";
+        var query = "select=*&order=created_at.desc";
         if (!esAdmin) query += $"&created_by=eq.{Uri.EscapeDataString(userId)}";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{SupabaseUrl}/rest/v1/ordenes_escolta?{query}");
         SetHeaders(request);
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        return JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync(), _jsonSettings) ?? new();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync(), _jsonSettings) ?? new();
+        var fields = new HashSet<string>("id,client_order_id,created_by,estado_captura,consecutivo,codigo_orden,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,created_at,email_enviado_at,email_error,pdf_path,pdf_generado_at".Split(','));
+        return rows.Select(row => row.Where(p => fields.Contains(p.Key)).ToDictionary(p => p.Key,p => p.Value)).ToList();
+    }
+
+    public async Task<string> DetalleCompartirOrdenAsync(string id)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{SupabaseUrl}/rest/v1/ordenes_escolta?id=eq.{Uri.EscapeDataString(id)}&select=*,ordenes_escolta_items(posicion,maquina,origen,destino)");
+        SetHeaders(request);
+        using var response=await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync()) ?? new();
+        var fields = new HashSet<string>("consecutivo,codigo_orden,fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,observaciones,ordenes_escolta_items".Split(','));
+        return JsonConvert.SerializeObject(rows.Select(row => row.Where(p => fields.Contains(p.Key)).ToDictionary(p => p.Key,p => p.Value)));
     }
 
     public async Task<string?> CrearUrlFirmadaPdfOrdenAsync(string path)
@@ -564,5 +636,7 @@ public class SupabaseService
 }
 
 public sealed record OrdenEscoltaCreada(string Id, long Consecutivo);
-public sealed record OrdenEscoltaRegistrada(string Id, long Consecutivo, string CreatedBy, string? PdfPath);
+public sealed record OrdenEscoltaRegistrada(string Id, long Consecutivo, string CreatedBy, string? PdfPath, string? CodigoOrden = null) {
+ public string NumeroVisible => CodigoOrden ?? Consecutivo.ToString("D5");
+}
 public sealed record CredencialEmail(string CorreoEmail, string ContrasenaApp);

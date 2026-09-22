@@ -5,7 +5,9 @@ using TransportesGutierrez.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddScoped<ModuleAccessFilter>();
+builder.Services.AddControllers(options => options.Filters.AddService<ModuleAccessFilter>());
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDataProtection()
@@ -23,12 +25,16 @@ builder.Services.AddOptions<SupabaseOptions>()
 builder.Services.AddScoped<XmlGeneratorService>();
 builder.Services.AddScoped<SupabaseService>();
 builder.Services.AddSingleton<AppSessionService>();
+builder.Services.AddHttpClient<FirmaOtpService>(client => client.Timeout=TimeSpan.FromSeconds(25));
 builder.Services.AddHttpClient<EmailSender>(client =>
 {
     client.BaseAddress = new Uri("https://api.brevo.com/");
     client.Timeout = TimeSpan.FromSeconds(45);
 });
-builder.Services.AddHostedService<PdfRetentionService>();
+if (builder.Configuration.GetValue("PdfRetention:Enabled", !builder.Environment.IsDevelopment()))
+{
+    builder.Services.AddHostedService<PdfRetentionService>();
+}
 
 builder.Services.AddHttpClient<RndcClient>(client =>
 {
@@ -60,7 +66,9 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors();
 app.UseExceptionHandler("/error");
+app.MapGet("/health", () => Results.Ok(new { status = "ok", revision = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT") }));
 app.MapControllers();
 app.Run();
 
 public partial class Program;
+
