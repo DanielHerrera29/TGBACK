@@ -5,7 +5,7 @@ using TransportesGutierrez.Api.Services;
 namespace TransportesGutierrez.Api.Controllers;
 [ApiController]
 [Route("api/ordenes-escolta/{orden:guid}/firma")]
-public sealed class FirmaOtpController(AppSessionService sessions,FirmaOtpService otp) : ControllerBase
+public sealed class FirmaOtpController(AppSessionService sessions,FirmaOtpService otp,ILogger<FirmaOtpController> logger) : ControllerBase
 {
     public sealed record Solicitud(string Nombre,string Email);
     public sealed record Comprobacion(Guid Id,string Codigo);
@@ -18,8 +18,8 @@ public sealed class FirmaOtpController(AppSessionService sessions,FirmaOtpServic
         if(!otp.Configured) return StatusCode(503,new {error="Falta configurar la cuenta Brevo de códigos. El botón Firmar sigue bloqueado."});
         if(string.IsNullOrWhiteSpace(datos.Nombre) || datos.Nombre.Trim().Length is <3 or >150 || !FirmaOtpService.ValidEmail(datos.Email)) return BadRequest(new {error="Ingrese el nombre y correo del arquitecto."});
 try {return Result(await otp.Start(session.UserId,orden.ToString(),datos.Nombre.Trim(),datos.Email!));}
-        catch(HttpRequestException) {return StatusCode(503,new {error="No se pudo confirmar la solicitud. Espere diez minutos antes de iniciar otra. La orden se conserva."});}
-        catch(TaskCanceledException) {return StatusCode(503,new {error="Respuesta incierta del proveedor. Espere diez minutos antes de solicitar otro código."});}
+        catch(HttpRequestException ex) {logger.LogWarning(ex,"OTP firma: fallo el envio del codigo para la orden {Orden}.",orden); return StatusCode(503,new {error="No se pudo confirmar la solicitud. Espere diez minutos antes de iniciar otra. La orden se conserva."});}
+        catch(TaskCanceledException ex) {logger.LogWarning(ex,"OTP firma: timeout al enviar el codigo para la orden {Orden}.",orden); return StatusCode(503,new {error="Respuesta incierta del proveedor. Espere diez minutos antes de solicitar otro código."});}
     }
     [HttpPost("estado")]
     public async Task<IActionResult> State(Guid orden) {
