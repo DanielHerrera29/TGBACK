@@ -70,7 +70,10 @@ public sealed class OrdenesEscoltaController : ControllerBase
         {
             await _db.SubirPdfOrdenEscoltaAsync(orden, pdf);
             correoIniciado = true;
-            await _email.EnviarOrdenEscoltaAsync(orden.Consecutivo, pdf, cancellationToken, orden.CodigoOrden);
+            var mensaje = await _db.ConstruirMensajeOrdenEscoltaAsync(id, orden.NumeroVisible);
+            if (!string.IsNullOrWhiteSpace(dto.NombreArquitecto) || !string.IsNullOrWhiteSpace(dto.CorreoArquitecto))
+                mensaje += $"\n\nArquitecto: {dto.NombreArquitecto}\nCorreo verificado: {dto.CorreoArquitecto}";
+            await _email.EnviarOrdenEscoltaAsync(orden.Consecutivo, pdf, cancellationToken, orden.CodigoOrden, mensaje);
             await _db.FinalizarEntregaOrdenAsync(session.UserId, id, "ENVIADA");
             return Ok(new { consecutivo = orden.Consecutivo, destinatario = "transportegutierrezremesas@gmail.com" });
         }

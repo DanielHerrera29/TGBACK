@@ -24,4 +24,6 @@ public sealed class OrdenEscoltaItemDto
 public sealed class EnviarOrdenEscoltaDto
 {
     public string PdfBase64 { get; set; } = "";
+    public string? NombreArquitecto { get; set; }
+    public string? CorreoArquitecto { get; set; }
 }

@@ -23,7 +23,8 @@ public sealed class EmailSender
         long consecutivo,
         byte[] pdf,
         CancellationToken cancellationToken = default,
-        string? codigoOrden = null)
+        string? codigoOrden = null,
+        string? mensaje = null)
     {
         ValidarConfiguracion();
         var destinatario = _configuration["OrdenEscolta:Destinatario"]
@@ -45,7 +46,7 @@ public sealed class EmailSender
             sender = new { email = remitente, name = nombreRemitente },
             to = new[] { new { email = destinatario, name = "Ordenes de escolta" } },
             subject = $"Orden de escolta No. {numeroVisible}",
-            textContent = "Se adjunta la orden de escolta generada por CargoDespacho.",
+            textContent = mensaje ?? "Se adjunta la orden de escolta generada por CargoDespacho.",
             attachment = new[] { new { content = Convert.ToBase64String(pdf), name = nombreArchivo } },
             tags = new[] { "orden-escolta" }
         });

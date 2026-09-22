@@ -538,6 +538,35 @@ public class SupabaseService
         return JsonConvert.SerializeObject(rows.Select(row => row.Where(p => fields.Contains(p.Key)).ToDictionary(p => p.Key,p => p.Value)));
     }
 
+    // Arma el mismo texto que se usa al compartir la orden por WhatsApp (ver
+    // CompartirOrdenWhatsapp / nueva_orden_escolta_screen.dart en el front), para que el
+    // correo con el PDF diga lo mismo en vez del texto generico "Se adjunta la orden...".
+    public async Task<string> ConstruirMensajeOrdenEscoltaAsync(string id, string numeroVisible)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{SupabaseUrl}/rest/v1/ordenes_escolta?id=eq.{Uri.EscapeDataString(id)}&select=fecha,empresa,placa_camabaja,placa_escolta,nombre_escolta,observaciones,ordenes_escolta_items(posicion,maquina,origen,destino)&limit=1");
+        SetHeaders(request);
+        using var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var arr = Newtonsoft.Json.Linq.JArray.Parse(await response.Content.ReadAsStringAsync());
+        var row = arr.FirstOrDefault() as Newtonsoft.Json.Linq.JObject;
+        var lineas = new List<string> { $"Orden de escolta No. {numeroVisible}" };
+        if (row != null)
+        {
+            lineas.Add($"Fecha: {(string?)row["fecha"]}");
+            lineas.Add($"Cliente: {(string?)row["empresa"]}");
+            lineas.Add($"Camabaja: {(string?)row["placa_camabaja"]}");
+            lineas.Add($"Escolta: {(string?)row["nombre_escolta"]}");
+            lineas.Add($"Placa escolta: {(string?)row["placa_escolta"]}");
+            var viajes = row["ordenes_escolta_items"] as Newtonsoft.Json.Linq.JArray ?? new Newtonsoft.Json.Linq.JArray();
+            foreach (var v in viajes.OrderBy(v => (int?)v["posicion"] ?? 0))
+                lineas.Add($"Viaje {(int?)v["posicion"]}: {(string?)v["maquina"]} · {(string?)v["origen"]} → {(string?)v["destino"]}");
+            var observaciones = (string?)row["observaciones"];
+            if (!string.IsNullOrWhiteSpace(observaciones)) lineas.Add($"Observaciones: {observaciones}");
+        }
+        return string.Join('\n', lineas);
+    }
+
     public async Task<string?> CrearUrlFirmadaPdfOrdenAsync(string path)
     {
         var encodedPath = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
